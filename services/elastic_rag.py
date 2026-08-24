@@ -1,4 +1,5 @@
 import os
+import base64
 from elasticsearch import Elasticsearch
 from langchain_community.vectorstores import ElasticsearchStore
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
@@ -10,8 +11,10 @@ from core.config import settings
 
 class ElasticRAGService:
     def __init__(self, gemini_api_key: str):
-        es_url = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
-        es_api_key = os.getenv("ELASTICSEARCH_API_KEY", None)
+        es_url = os.getenv("ELASTICSEARCH_URL") or settings.ELASTICSEARCH_URL
+        es_api_key = os.getenv("ELASTICSEARCH_API_KEY") or getattr(
+            settings, "ELASTICSEARCH_API_KEY", None
+        )
 
         if "localhost" not in es_url and not es_api_key:
             raise HTTPException(
@@ -20,23 +23,7 @@ class ElasticRAGService:
             )
 
         if es_api_key:
-            try:
-                # Base64 ile kodlanmış Elastic Cloud API key'ini çözüyoruz (id:api_key formatına getiriyoruz)
-                decoded_bytes = base64.b64decode(es_api_key)
-                decoded_str = decoded_bytes.decode("utf-8")
-                api_id, api_secret = decoded_str.split(":", 1)
-
-                # Elasticsearch Python istemcisine id ve secret ikilisini tuple olarak veriyoruz
-                self.es_client = Elasticsearch(
-                    es_url,
-                    api_key=(api_id, api_secret)
-                )
-            except Exception as e:
-                # Eğer parse edilemezse doğrudan ham anahtarla dene
-                self.es_client = Elasticsearch(
-                    es_url,
-                    headers={"Authorization": f"ApiKey {es_api_key}"}
-                )
+            self.es_client = self._build_authenticated_client(es_url, es_api_key.strip())
         else:
             self.es_client = Elasticsearch(es_url)
         
@@ -49,6 +36,20 @@ class ElasticRAGService:
         
         self.index_name = "scikit-learn-rag-index"
 
+    @staticmethod
+    def _build_authenticated_client(es_url: str, es_api_key: str) -> Elasticsearch:
+        # Elastic Cloud API keys are usually already Base64(id:api_key).
+        # elasticsearch-py accepts that string directly via api_key=.
+        try:
+            decoded = base64.b64decode(es_api_key).decode("utf-8")
+            if ":" in decoded:
+                api_id, api_secret = decoded.split(":", 1)
+                return Elasticsearch(es_url, api_key=(api_id, api_secret))
+        except Exception:
+            pass
+
+        return Elasticsearch(es_url, api_key=es_api_key)
+
     def index_documents(self, chunks):
         """
         Indexes document chunks into Elasticsearch with vector embeddings.
@@ -56,9 +57,8 @@ class ElasticRAGService:
         vector_store = ElasticsearchStore.from_documents(
             documents=chunks,
             embedding=self.embeddings,
-            es_url=settings.ELASTICSEARCH_URL,
+            es_connection=self.es_client,
             index_name=self.index_name,
-            #strategy=ElasticsearchStore.SparseRetrievalStrategy()
         )
         return vector_store
 
@@ -67,7 +67,7 @@ class ElasticRAGService:
         Queries the RAG pipeline using Elasticsearch retrieval and Gemini LLM via pure LCEL.
         """
         vector_store = ElasticsearchStore(
-            es_url=settings.ELASTICSEARCH_URL,
+            es_connection=self.es_client,
             index_name=self.index_name,
             embedding=self.embeddings
         )
