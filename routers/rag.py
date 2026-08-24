@@ -1,24 +1,35 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from models.schemas import QueryRequest, QueryResponse
 from services.elastic_rag import ElasticRAGService
 from services.loader import load_and_split_pdf
+from core.config import settings
 import os
 
-router = APIRouter(prefix="/tag", tags=["RAG Operations"])
+router = APIRouter(tags=["RAG"])
+
+
+def resolve_gemini_api_key(x_gemini_api_key: str | None) -> str:
+    """Prefer the per-request BYOK header; fall back to optional server env."""
+    api_key = (x_gemini_api_key or settings.GEMINI_API_KEY or "").strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Gemini API key required. Send header X-Gemini-Api-Key.",
+        )
+    return api_key
+
 
 @router.post("/query", response_model=QueryResponse)
-def quey_rag_endpoint(request: QueryRequest):
+def query_rag_endpoint(
+    request: QueryRequest,
+    x_gemini_api_key: str | None = Header(default=None, alias="X-Gemini-Api-Key"),
+):
     """
-        Endpoint to process RAG queries using user's Gemini API key (BYOK).
+        Process a RAG query. Gemini key is BYOK via header (not stored).
     """
     try:
-        # Initialize the RAG service with the user's provided API key
-        rag_service = ElasticRAGService(gemini_api_key=request.gemini_api_key)
-
-        # Run the RAG query
+        rag_service = ElasticRAGService(gemini_api_key=resolve_gemini_api_key(x_gemini_api_key))
         response = rag_service.query_rag(question=request.question)
-
-        # Extract source documents page content, 
         source_docs = [doc.page_content for doc in response.get("source_documents", [])]
 
         return QueryResponse(
@@ -26,24 +37,27 @@ def quey_rag_endpoint(request: QueryRequest):
             source_documents=source_docs
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/index-pdf")
-def index_pdf_endpoint(gemini_api_key:str):
+
+@router.post("/documents/index")
+def index_pdf_endpoint(
+    x_gemini_api_key: str | None = Header(default=None, alias="X-Gemini-Api-Key"),
+):
     """
-        Endpoint to load and index the local PDF document into Elasticsearch.
+        Load and index the bundled PDF into Elasticsearch.
     """
     try:
-        pdf_path= os.path.join("data", "document.pdf")
-
-        # Load and split the PDF
+        pdf_path = os.path.join("data", "document.pdf")
         chunks = load_and_split_pdf(pdf_path)
-
-        #Initialize RAG service and index documents
-        rag_service = ElasticRAGService(gemini_api_key= gemini_api_key)
+        rag_service = ElasticRAGService(gemini_api_key=resolve_gemini_api_key(x_gemini_api_key))
         rag_service.index_documents(chunks)
 
         return {"status": "success", "message": f"Successfully indexed {len(chunks)} chunks into Elasticsearch."}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

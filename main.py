@@ -10,17 +10,21 @@ app = FastAPI(
     description="Production-ready RAG Assistant with FastAPI, Elasticsearch, and Gemini BYOK / FastAPI"
 )
 
-# Configure CORS
+# Browser only allows JS calls from origins listed here (from ALLOWED_ORIGINS env).
+origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type", "X-Gemini-Api-Key"],
 )
 
-# Include RAG router
-app.include_router(rag.router)
+app.include_router(rag.router, prefix="/rag/v1")
+
+@app.get("/rag/v1/health")
+def health():
+    return {"status": "ok"}
 
 @app.get("/")
 def root():
