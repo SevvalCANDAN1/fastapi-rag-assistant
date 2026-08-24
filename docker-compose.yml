@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   elasticsearch:
-    image: elasticsearch:8.12.1
+    image: elasticsearch:9.6.0
     container_name: elasticsearch_rag
     environment:
       - discovery.type=single-node
