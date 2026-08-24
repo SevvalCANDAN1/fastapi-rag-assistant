@@ -5,6 +5,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGener
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+from fastapi import HTTPException
 from core.config import settings
 
 class ElasticRAGService:
@@ -21,6 +22,12 @@ class ElasticRAGService:
             self.es_client = Elasticsearch(es_url, api_key=es_api_key)
         else:
             self.es_client = Elasticsearch(es_url)
+
+        if "localhost" not in es_url and not es_api_key:
+            raise HTTPException(
+                status_code=500, 
+                detail="Elasticsearch Cloud URL is configured, but ELASTICSEARCH_API_KEY is missing!"
+            )
         
         self.api_key = gemini_api_key
         
