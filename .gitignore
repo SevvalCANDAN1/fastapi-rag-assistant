@@ -1,0 +1,13 @@
+# Python cache files / Python önbellek dosyaları
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments / Sanal ortamlar
+venv/
+env/
+.env
+
+# IDE specific files / IDE dosyaları
+.vscode/
+.idea/
