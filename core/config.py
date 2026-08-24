@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     PROJECT_NAME: str
     ELASTICSEARCH_URL: str
     ELASTICSEARCH_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: str
+    JWT_SECRET: str
+    ALLOWED_ORIGINS: str
 
     class Config:
         env_file = ".env"
