@@ -14,12 +14,6 @@ class ElasticRAGService:
     """
     def __init__(self, gemini_api_key: str):
         # Ayarlardan veya doğrudan çevresel değişkenlerden URL ve API Key'i alıyoruz
-        class ElasticRAGService:
-    """
-    Manages Elasticsearch vector store indexing, retrieval, and Gemini LLM generation (BYOK) using pure LCEL.
-    """
-    def __init__(self, gemini_api_key: str):
-        # Ayarlardan veya doğrudan çevresel değişkenlerden URL ve API Key'i alıyoruz
         es_url = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
         es_api_key = os.getenv("ELASTICSEARCH_API_KEY", None)
 
