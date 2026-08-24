@@ -14,24 +14,29 @@ class ElasticRAGService:
     """
     def __init__(self, gemini_api_key: str):
         # Ayarlardan veya doğrudan çevresel değişkenlerden URL ve API Key'i alıyoruz
+        class ElasticRAGService:
+    """
+    Manages Elasticsearch vector store indexing, retrieval, and Gemini LLM generation (BYOK) using pure LCEL.
+    """
+    def __init__(self, gemini_api_key: str):
+        # Ayarlardan veya doğrudan çevresel değişkenlerden URL ve API Key'i alıyoruz
         es_url = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
         es_api_key = os.getenv("ELASTICSEARCH_API_KEY", None)
-
-        if es_api_key:
-            # Elastic Cloud için API Key ile bağlantı 
-            # (Eğer tek string hata veriyorsa kütüphane bazen headers veya api_key parametresini farklı ister)
-            self.es_client = Elasticsearch(
-                es_url,
-                api_key=es_api_key
-            )
-        else:
-            self.es_client = Elasticsearch(es_url)
 
         if "localhost" not in es_url and not es_api_key:
             raise HTTPException(
                 status_code=500, 
                 detail="Elasticsearch Cloud URL is configured, but ELASTICSEARCH_API_KEY is missing!"
             )
+
+        if es_api_key:
+            # Curl ile başarılı olduğumuz yöntemi (Authorization headers) uyguluyoruz
+            self.es_client = Elasticsearch(
+                es_url,
+                headers={"Authorization": f"ApiKey {es_api_key}"}
+            )
+        else:
+            self.es_client = Elasticsearch(es_url)
         
         self.api_key = gemini_api_key
         
