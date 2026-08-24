@@ -2,7 +2,7 @@ import os
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-def load_and_split_pdf(file_path:str, chunk_size: int=100, chunk_overlap: int = 200):
+def load_and_split_pdf(file_path:str, chunk_size: int=500, chunk_overlap: int = 50):
     """
         Loads a PDF document and splits it into manageable text chunks for RAG.
     """

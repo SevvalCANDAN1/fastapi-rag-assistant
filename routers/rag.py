@@ -1,10 +1,10 @@
 from fastapi import APIRouter, HTTPException
-from model.schemas import QueryRequest, QueryResponse
+from models.schemas import QueryRequest, QueryResponse
 from services.elastic_rag import ElasticRAGService
 from services.loader import load_and_split_pdf
 import os
 
-router = APIRouter(profix="/tag", tags=["RAG Operations"])
+router = APIRouter(prefix="/tag", tags=["RAG Operations"])
 
 @router.post("/query", response_model=QueryResponse)
 def quey_rag_endpoint(request: QueryRequest):
@@ -16,7 +16,7 @@ def quey_rag_endpoint(request: QueryRequest):
         rag_service = ElasticRAGService(gemini_api_key=request.gemini_api_key)
 
         # Run the RAG query
-        response = rag_service.query_rag(question=request.gemini_api_key)
+        response = rag_service.query_rag(question=request.question)
 
         # Extract source documents page content, 
         source_docs = [doc.page_content for doc in response.get("source_documents", [])]
