@@ -9,11 +9,7 @@ from fastapi import HTTPException
 from core.config import settings
 
 class ElasticRAGService:
-    """
-    Manages Elasticsearch vector store indexing, retrieval, and Gemini LLM generation (BYOK) using pure LCEL.
-    """
     def __init__(self, gemini_api_key: str):
-        # Ayarlardan veya doğrudan çevresel değişkenlerden URL ve API Key'i alıyoruz
         es_url = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
         es_api_key = os.getenv("ELASTICSEARCH_API_KEY", None)
 
@@ -24,16 +20,25 @@ class ElasticRAGService:
             )
 
         if es_api_key:
-            # Curl ile başarılı olduğumuz yöntemi (Authorization headers) uyguluyoruz
-            self.es_client = Elasticsearch(
-                es_url,
-                headers={"Authorization": f"ApiKey {es_api_key}"}
-            )
+            try:
+                # Base64 ile kodlanmış Elastic Cloud API key'ini çözüyoruz (id:api_key formatına getiriyoruz)
+                decoded_bytes = base64.b64decode(es_api_key)
+                decoded_str = decoded_bytes.decode("utf-8")
+                api_id, api_secret = decoded_str.split(":", 1)
+
+                # Elasticsearch Python istemcisine id ve secret ikilisini tuple olarak veriyoruz
+                self.es_client = Elasticsearch(
+                    es_url,
+                    api_key=(api_id, api_secret)
+                )
+            except Exception as e:
+                # Eğer parse edilemezse doğrudan ham anahtarla dene
+                self.es_client = Elasticsearch(
+                    es_url,
+                    headers={"Authorization": f"ApiKey {es_api_key}"}
+                )
         else:
             self.es_client = Elasticsearch(es_url)
-
-        print(f"DEBUG URL: {es_url}")
-        print(f"DEBUG API KEY Length: {len(es_api_key) if es_api_key else 'YOK'}")
         
         self.api_key = gemini_api_key
         
