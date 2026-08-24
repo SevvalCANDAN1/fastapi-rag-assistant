@@ -31,6 +31,9 @@ class ElasticRAGService:
             )
         else:
             self.es_client = Elasticsearch(es_url)
+
+        print(f"DEBUG URL: {es_url}")
+        print(f"DEBUG API KEY Length: {len(es_api_key) if es_api_key else 'YOK'}")
         
         self.api_key = gemini_api_key
         
