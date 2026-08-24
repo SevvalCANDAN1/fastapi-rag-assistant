@@ -2,7 +2,7 @@ fastapi
 uvicorn
 pydantic
 pydantic-settings
-elasticsearch>=8,<9
+elasticsearch>=9,<10
 langchain[all]
 langchain-community
 langchain-google-genai
