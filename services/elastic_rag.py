@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from core.config import settings
 
 class ElasticRAGService:
-    def __init__(self, gemini_api_key: str):
+    def __init__(self, gemini_api_key: str, workspace_id: str):
         es_url = os.getenv("ELASTICSEARCH_URL") or settings.ELASTICSEARCH_URL
         es_api_key = os.getenv("ELASTICSEARCH_API_KEY") or getattr(
             settings, "ELASTICSEARCH_API_KEY", None
@@ -33,8 +33,11 @@ class ElasticRAGService:
             model="models/gemini-embedding-001",
             google_api_key=self.api_key
         )
-        
-        self.index_name = "scikit-learn-rag-index"
+
+        safe = "".join(c for c in workspace_id.lower() if c.isalnum() or c in "-_")
+        if not safe:
+            raise HTTPException(status_code=400, detail="Invalid workspace_id")
+        self.index_name = f"rag-{safe}"
 
     @staticmethod
     def _build_authenticated_client(es_url: str, es_api_key: str) -> Elasticsearch:
@@ -54,13 +57,13 @@ class ElasticRAGService:
         """
         Indexes document chunks into Elasticsearch with vector embeddings.
         """
-        vector_store = ElasticsearchStore.from_documents(
-            documents=chunks,
-            embedding=self.embeddings,
+        store = ElasticsearchStore(
             es_connection=self.es_client,
             index_name=self.index_name,
+            embedding=self.embeddings,
         )
-        return vector_store
+        store.add_documents(chunks)
+        return store
 
     def query_rag(self, question: str):
         """

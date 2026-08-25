@@ -17,7 +17,7 @@ app.add_middleware(
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
-    allow_headers=["Authorization", "Content-Type", "X-Gemini-Api-Key"],
+    allow_headers=["Authorization", "Content-Type", "X-Gemini-Api-Key", "X-Workspace-Id"],
 )
 
 app.include_router(rag.router, prefix="/rag/v1")

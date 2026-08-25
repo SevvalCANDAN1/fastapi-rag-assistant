@@ -11,3 +11,5 @@ env/
 # IDE specific files / IDE dosyaları
 .vscode/
 .idea/
+
+plan.md
