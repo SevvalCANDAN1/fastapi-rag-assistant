@@ -9,8 +9,16 @@ from langchain_core.output_parsers import StrOutputParser
 from fastapi import HTTPException
 from core.config import settings
 
+DEFAULT_SYSTEM_PROMPT = """You are a RAG assistant. Answer using ONLY the text inside <context>.
+If the context is empty or does not contain the answer, say that this information is not in the uploaded documents. Do not invent facts.
+If the question is in Turkish, answer in Turkish.
+When you use a passage, mention the filename or page if that metadata appears in the context."""
+
+SETTINGS_INDEX = "rag-workspace-settings"
+
+
 class ElasticRAGService:
-    def __init__(self, gemini_api_key: str, workspace_id: str):
+    def __init__(self, workspace_id: str, gemini_api_key: str | None = None):
         es_url = os.getenv("ELASTICSEARCH_URL") or settings.ELASTICSEARCH_URL
         es_api_key = os.getenv("ELASTICSEARCH_API_KEY") or getattr(
             settings, "ELASTICSEARCH_API_KEY", None
@@ -26,18 +34,30 @@ class ElasticRAGService:
             self.es_client = self._build_authenticated_client(es_url, es_api_key.strip())
         else:
             self.es_client = Elasticsearch(es_url)
-        
+
         self.api_key = gemini_api_key
-        
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/gemini-embedding-001",
-            google_api_key=self.api_key
-        )
+        self._embeddings = None
 
         safe = "".join(c for c in workspace_id.lower() if c.isalnum() or c in "-_")
         if not safe:
             raise HTTPException(status_code=400, detail="Invalid workspace_id")
+        self.workspace_id = workspace_id
+        self.workspace_safe = safe
         self.index_name = f"rag-{safe}"
+
+    @property
+    def embeddings(self):
+        if not self.api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="Gemini API key required. Send header X-Gemini-Api-Key.",
+            )
+        if self._embeddings is None:
+            self._embeddings = GoogleGenerativeAIEmbeddings(
+                model="models/gemini-embedding-001",
+                google_api_key=self.api_key,
+            )
+        return self._embeddings
 
     @staticmethod
     def _build_authenticated_client(es_url: str, es_api_key: str) -> Elasticsearch:
@@ -53,6 +73,35 @@ class ElasticRAGService:
 
         return Elasticsearch(es_url, api_key=es_api_key)
 
+    def get_system_prompt(self) -> tuple[str, bool]:
+        try:
+            res = self.es_client.get(index=SETTINGS_INDEX, id=self.workspace_safe)
+            saved = (res["_source"] or {}).get("system_prompt") or ""
+            if saved.strip():
+                return saved.strip(), False
+        except Exception:
+            pass
+        return DEFAULT_SYSTEM_PROMPT, True
+
+    def set_system_prompt(self, prompt: str) -> tuple[str, bool]:
+        text = (prompt or "").strip()
+        if not text:
+            try:
+                self.es_client.delete(index=SETTINGS_INDEX, id=self.workspace_safe)
+            except Exception:
+                pass
+            return DEFAULT_SYSTEM_PROMPT, True
+
+        self.es_client.index(
+            index=SETTINGS_INDEX,
+            id=self.workspace_safe,
+            document={
+                "workspace_id": self.workspace_id,
+                "system_prompt": text,
+            },
+        )
+        return text, False
+
     def index_documents(self, chunks):
         """
         Indexes document chunks into Elasticsearch with vector embeddings.
@@ -65,7 +114,7 @@ class ElasticRAGService:
         store.add_documents(chunks)
         return store
 
-    def query_rag(self, question: str):
+    def query_rag(self, question: str, system_prompt: str | None = None):
         """
         Queries the RAG pipeline using Elasticsearch retrieval and Gemini LLM via pure LCEL.
         """
@@ -77,22 +126,28 @@ class ElasticRAGService:
         
         retriever = vector_store.as_retriever(search_kwargs={"k": 3})
         
-        # Configure Gemini LLM
         llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
             google_api_key=self.api_key,
             temperature=0.3
         )
         
-        # Format retrieved documents into a single text string
         def format_docs(docs):
-            return "\n\n".join(doc.page_content for doc in docs)
+            parts = []
+            for doc in docs:
+                meta = doc.metadata or {}
+                label = meta.get("filename") or "document"
+                page = meta.get("page")
+                header = f"[{label}" + (f" p.{page}]" if page is not None else "]")
+                parts.append(f"{header}\n{doc.page_content}")
+            return "\n\n".join(parts)
 
-        # Modern LCEL chain construction (bypasses any langchain.chains issues)
+        instructions = (system_prompt or "").strip()
+        if not instructions:
+            instructions, _ = self.get_system_prompt()
+
         prompt = ChatPromptTemplate.from_template("""
-        You are an expert AI assistant. Answer the user's question accurately using the provided context. 
-        If the question is in Turkish, you can translate and synthesize the answer from the English context into fluent Turkish.
-        If the context does not have the exact answer, use your knowledge to provide a helpful response.
+        {system_instructions}
 
         <context>
         {context}
@@ -104,17 +159,29 @@ class ElasticRAGService:
         retrieved_docs = retriever.invoke(question)
         context_text = format_docs(retrieved_docs)
         
-        # Construct the chain manually and cleanly
         chain = (
-            {"context": lambda x: context_text, "question": RunnablePassthrough()}
+            {
+                "system_instructions": lambda _: instructions,
+                "context": lambda _: context_text,
+                "question": RunnablePassthrough(),
+            }
             | prompt
             | llm
             | StrOutputParser()
         )
         
         answer = chain.invoke(question)
+
+        sources = []
+        for doc in retrieved_docs:
+            meta = doc.metadata or {}
+            sources.append({
+                "text": doc.page_content,
+                "filename": meta.get("filename"),
+                "page": meta.get("page"),
+            })
         
         return {
             "result": answer,
-            "source_documents": retrieved_docs
+            "source_documents": sources
         }

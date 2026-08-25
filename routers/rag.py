@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Header, HTTPException, UploadFile, File
-from models.schemas import QueryRequest, QueryResponse
+from models.schemas import QueryRequest, QueryResponse, SystemPromptBody, SystemPromptResponse
 from services.elastic_rag import ElasticRAGService
 from services.loader import load_and_split_pdf
 from core.config import settings
@@ -37,15 +37,17 @@ def query_rag_endpoint(
     """
     try:
         rag_service = ElasticRAGService(
-            gemini_api_key=resolve_gemini_api_key(x_gemini_api_key),
             workspace_id=resolve_workspace_id(x_workspace_id),
+            gemini_api_key=resolve_gemini_api_key(x_gemini_api_key),
         )
-        response = rag_service.query_rag(question=request.question)
-        source_docs = [doc.page_content for doc in response.get("source_documents", [])]
+        response = rag_service.query_rag(
+            question=request.question,
+            system_prompt=request.system_prompt,
+        )
 
         return QueryResponse(
             answer=response.get("result", "No answer generated"),
-            source_documents=source_docs
+            source_documents=response.get("source_documents", []),
         )
 
     except HTTPException:
@@ -88,8 +90,8 @@ async def index_pdf_endpoint(
             },
         )
         rag_service = ElasticRAGService(
-            gemini_api_key=api_key,
             workspace_id=workspace_id,
+            gemini_api_key=api_key,
         )
         rag_service.index_documents(chunks)
         return {
@@ -105,4 +107,23 @@ async def index_pdf_endpoint(
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
-          
+
+
+@router.get("/prompt", response_model=SystemPromptResponse)
+def get_prompt_endpoint(
+    x_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
+):
+    rag_service = ElasticRAGService(workspace_id=resolve_workspace_id(x_workspace_id))
+    prompt, is_default = rag_service.get_system_prompt()
+    return SystemPromptResponse(system_prompt=prompt, is_default=is_default)
+
+
+@router.put("/prompt", response_model=SystemPromptResponse)
+def put_prompt_endpoint(
+    body: SystemPromptBody,
+    x_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
+):
+    rag_service = ElasticRAGService(workspace_id=resolve_workspace_id(x_workspace_id))
+    prompt, is_default = rag_service.set_system_prompt(body.system_prompt)
+    return SystemPromptResponse(system_prompt=prompt, is_default=is_default)
+ 
