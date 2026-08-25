@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from routers import rag
@@ -29,10 +30,14 @@ def health():
         elasticsearch_ok = get_es_client().ping()
     except Exception:
         elasticsearch_ok = False
-    return {
+
+    body = {
         "status": "ok" if elasticsearch_ok else "degraded",
         "elasticsearch": elasticsearch_ok,
     }
+    if not elasticsearch_ok:
+        return JSONResponse(status_code=503, content=body)
+    return body
 
 @app.get("/")
 def root():
