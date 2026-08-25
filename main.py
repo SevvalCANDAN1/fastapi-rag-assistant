@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from routers import rag
+from services.elastic_rag import get_es_client
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -24,7 +25,14 @@ app.include_router(rag.router, prefix="/rag/v1")
 
 @app.get("/rag/v1/health")
 def health():
-    return {"status": "ok"}
+    try:
+        elasticsearch_ok = get_es_client().ping()
+    except Exception:
+        elasticsearch_ok = False
+    return {
+        "status": "ok" if elasticsearch_ok else "degraded",
+        "elasticsearch": elasticsearch_ok,
+    }
 
 @app.get("/")
 def root():

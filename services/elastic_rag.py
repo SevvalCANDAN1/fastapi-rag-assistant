@@ -8,6 +8,7 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from fastapi import HTTPException
 from core.config import settings
+from functools import lru_cache
 
 DEFAULT_SYSTEM_PROMPT = """You are a RAG assistant. Answer using ONLY the text inside <context>.
 If the context is empty or does not contain the answer, say that this information is not in the uploaded documents. Do not invent facts.
@@ -17,23 +18,35 @@ When you use a passage, mention the filename or page if that metadata appears in
 SETTINGS_INDEX = "rag-workspace-settings"
 
 
+def _build_authenticated_client(es_url: str, es_api_key: str) -> Elasticsearch:
+    try:
+        decoded = base64.b64decode(es_api_key).decode("utf-8")
+        if ":" in decoded:
+            api_id, api_secret = decoded.split(":", 1)
+            return Elasticsearch(es_url, api_key=(api_id, api_secret))
+    except Exception:
+        pass
+    return Elasticsearch(es_url, api_key=es_api_key)
+
+
+@lru_cache(maxsize=1)
+def get_es_client() -> Elasticsearch:
+    """Single shared Elasticsearch client for the process (URL + API key from env)."""
+    es_url = os.getenv("ELASTICSEARCH_URL") or settings.ELASTICSEARCH_URL
+    es_api_key = (os.getenv("ELASTICSEARCH_API_KEY") or settings.ELASTICSEARCH_API_KEY or "").strip()
+    if "localhost" not in es_url and not es_api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="Elasticsearch Cloud URL is configured, but ELASTICSEARCH_API_KEY is missing!",
+        )
+    if es_api_key:
+        return _build_authenticated_client(es_url, es_api_key)
+    return Elasticsearch(es_url)
+
+
 class ElasticRAGService:
     def __init__(self, workspace_id: str, gemini_api_key: str | None = None):
-        es_url = os.getenv("ELASTICSEARCH_URL") or settings.ELASTICSEARCH_URL
-        es_api_key = os.getenv("ELASTICSEARCH_API_KEY") or getattr(
-            settings, "ELASTICSEARCH_API_KEY", None
-        )
-
-        if "localhost" not in es_url and not es_api_key:
-            raise HTTPException(
-                status_code=500, 
-                detail="Elasticsearch Cloud URL is configured, but ELASTICSEARCH_API_KEY is missing!"
-            )
-
-        if es_api_key:
-            self.es_client = self._build_authenticated_client(es_url, es_api_key.strip())
-        else:
-            self.es_client = Elasticsearch(es_url)
+        self.es_client = get_es_client()
 
         self.api_key = gemini_api_key
         self._embeddings = None
@@ -58,20 +71,6 @@ class ElasticRAGService:
                 google_api_key=self.api_key,
             )
         return self._embeddings
-
-    @staticmethod
-    def _build_authenticated_client(es_url: str, es_api_key: str) -> Elasticsearch:
-        # Elastic Cloud API keys are usually already Base64(id:api_key).
-        # elasticsearch-py accepts that string directly via api_key=.
-        try:
-            decoded = base64.b64decode(es_api_key).decode("utf-8")
-            if ":" in decoded:
-                api_id, api_secret = decoded.split(":", 1)
-                return Elasticsearch(es_url, api_key=(api_id, api_secret))
-        except Exception:
-            pass
-
-        return Elasticsearch(es_url, api_key=es_api_key)
 
     def get_system_prompt(self) -> tuple[str, bool]:
         try:
@@ -185,3 +184,5 @@ class ElasticRAGService:
             "result": answer,
             "source_documents": sources
         }
+
+    
