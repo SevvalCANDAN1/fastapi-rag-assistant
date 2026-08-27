@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query
 from core.model_catalog import (
     LLM_MODELS,
+    LLM_MODEL_IDS,
+    LLM_PROVIDERS,
     recommended_embeddings_for,
 )
 from models.schemas import (
@@ -28,14 +30,15 @@ def get_llm_models() -> LLMModelsResponse:
         )
         for item in LLM_MODELS
     ]
+    return LLMModelsResponse(models=models)
 
 @router.get(
     "/embedding-models",
     response_model=EmbeddingModelsResponse,
 )
 def get_embedding_models(
-    llm_provider: str = Query(..., min_length=1),
-    llm_model: str = Query(..., min_length=1),
+    llm_provider: str = Query(..., enum=LLM_PROVIDERS),
+    llm_model: str = Query(..., enum=LLM_MODEL_IDS),
 ) -> EmbeddingModelsResponse:
     recommendations = recommended_embeddings_for(
         llm_provider=llm_provider,
