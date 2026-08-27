@@ -8,6 +8,13 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from fastapi import HTTPException
 from core.config import settings
+from core.model_catalog import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EMBEDDING_PROVIDER,
+    DEFAULT_LLM_MODEL,
+    DEFAULT_LLM_PROVIDER,
+    embedding_slug_for,
+)
 from functools import lru_cache
 
 DEFAULT_SYSTEM_PROMPT = """You are a RAG assistant. Answer using ONLY the text inside <context>.
@@ -58,6 +65,61 @@ class ElasticRAGService:
         self.workspace_safe = safe
         self.index_name = f"rag-{safe}"
 
+    def _settings_id(self) -> str:
+        return self.workspace_safe
+
+    def _load_settings_source(self) -> dict:
+        try:
+            res = self.es_client.get(index=SETTINGS_INDEX, id=self._settings_id())
+            return dict(res["_source"] or {})
+        except Exception:
+            return {}
+
+    def _workspace_document(
+        self,
+        source: dict | None = None,
+        *,
+        system_prompt: str | None = None,
+        llm_provider: str | None = None,
+        llm_model: str | None = None,
+        embedding_provider: str | None = None,
+        embedding_model: str | None = None,
+    ) -> dict:
+        current = dict(source or {})
+        provider = (llm_provider or current.get("llm_provider") or DEFAULT_LLM_PROVIDER).strip().lower()
+        model = (llm_model or current.get("llm_model") or DEFAULT_LLM_MODEL).strip()
+        emb_provider = (
+            embedding_provider
+            or current.get("embedding_provider")
+            or DEFAULT_EMBEDDING_PROVIDER
+        ).strip().lower()
+        emb_model = (
+            embedding_model
+            or current.get("embedding_model")
+            or DEFAULT_EMBEDDING_MODEL
+        ).strip()
+        prompt = system_prompt if system_prompt is not None else (current.get("system_prompt") or "")
+        return {
+            "workspace_id": self.workspace_id,
+            "llm_provider": provider,
+            "llm_model": model,
+            "embedding_provider": emb_provider,
+            "embedding_model": emb_model,
+            "embedding_slug": embedding_slug_for(emb_provider, emb_model),
+            "system_prompt": prompt,
+        }
+
+    def get_workspace_settings(self) -> dict:
+        return self._workspace_document(self._load_settings_source())
+
+    def save_workspace_settings(self, document: dict) -> dict:
+        self.es_client.index(
+            index=SETTINGS_INDEX,
+            id=self._settings_id(),
+            document=document,
+        )
+        return document
+
     @property
     def embeddings(self):
         if not self.api_key:
@@ -73,32 +135,20 @@ class ElasticRAGService:
         return self._embeddings
 
     def get_system_prompt(self) -> tuple[str, bool]:
-        try:
-            res = self.es_client.get(index=SETTINGS_INDEX, id=self.workspace_safe)
-            saved = (res["_source"] or {}).get("system_prompt") or ""
-            if saved.strip():
-                return saved.strip(), False
-        except Exception:
-            pass
+        saved = (self._load_settings_source().get("system_prompt") or "").strip()
+        if saved:
+            return saved, False
         return DEFAULT_SYSTEM_PROMPT, True
 
     def set_system_prompt(self, prompt: str) -> tuple[str, bool]:
         text = (prompt or "").strip()
-        if not text:
-            try:
-                self.es_client.delete(index=SETTINGS_INDEX, id=self.workspace_safe)
-            except Exception:
-                pass
-            return DEFAULT_SYSTEM_PROMPT, True
-
-        self.es_client.index(
-            index=SETTINGS_INDEX,
-            id=self.workspace_safe,
-            document={
-                "workspace_id": self.workspace_id,
-                "system_prompt": text,
-            },
+        document = self._workspace_document(
+            self._load_settings_source(),
+            system_prompt=text,
         )
+        self.save_workspace_settings(document)
+        if not text:
+            return DEFAULT_SYSTEM_PROMPT, True
         return text, False
 
     def index_documents(self, chunks):
