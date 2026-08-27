@@ -151,3 +151,10 @@ def recommended_embeddings_for(
             )
         recommendations.append(embedding)
     return tuple(recommendations)
+
+LLM_PROVIDERS: tuple[str, ...] = tuple(
+    dict.fromkeys(item.provider for item in LLM_MODELS)
+)
+LLM_MODEL_IDS: tuple[str, ...] = tuple(
+    dict.fromkeys(item.model for item in LLM_MODELS)
+)
