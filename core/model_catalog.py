@@ -158,3 +158,16 @@ LLM_PROVIDERS: tuple[str, ...] = tuple(
 LLM_MODEL_IDS: tuple[str, ...] = tuple(
     dict.fromkeys(item.model for item in LLM_MODELS)
 )
+
+DEFAULT_LLM_PROVIDER = LLM_MODELS[0].provider
+DEFAULT_LLM_MODEL = LLM_MODELS[0].model
+DEFAULT_EMBEDDING_PROVIDER = LLM_MODELS[0].recommended_embeddings[0].provider
+DEFAULT_EMBEDDING_MODEL = LLM_MODELS[0].recommended_embeddings[0].model
+
+
+def embedding_slug_for(provider: str, model: str) -> str:
+    raw = f"{provider}-{model}".lower()
+    slug = "".join(c if c.isalnum() else "-" for c in raw)
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug.strip("-")
