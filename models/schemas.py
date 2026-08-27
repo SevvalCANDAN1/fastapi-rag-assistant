@@ -35,3 +35,42 @@ class SystemPromptBody(BaseModel):
 class SystemPromptResponse(BaseModel):
     system_prompt: str
     is_default: bool
+
+class LLMModelOption(BaseModel):
+    provider: str = Field(
+        ...,
+        description="LLM provider identifier.",
+    )
+    model: str = Field(
+        ...,
+        description="Model identifier sent to the provider API.",
+    )
+    display_name: str = Field(
+        ...,
+        description="Human-readable model name.",
+    )
+
+
+class LLMModelsResponse(BaseModel):
+    models: list[LLMModelOption]
+
+
+class EmbeddingModelOption(BaseModel):
+    provider: str = Field(
+        ...,
+        description="Embedding provider identifier.",
+    )
+    model: str = Field(
+        ...,
+        description="Embedding model identifier sent to the provider API.",
+    )
+    display_name: str = Field(
+        ...,
+        description="Human-readable embedding model name.",
+    )
+
+
+class EmbeddingModelsResponse(BaseModel):
+    llm_provider: str
+    llm_model: str
+    models: list[EmbeddingModelOption]

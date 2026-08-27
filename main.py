@@ -2,7 +2,7 @@ from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
-from routers import rag
+from routers import rag, catalog
 from services.elastic_rag import get_es_client
 
 # Initialize FastAPI application
@@ -23,6 +23,7 @@ app.add_middleware(
 )
 
 app.include_router(rag.router, prefix="/rag/v1")
+app.include_router(catalog.router, prefix="/rag/v1")
 
 @app.get("/rag/v1/health")
 def health():
