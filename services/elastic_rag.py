@@ -14,6 +14,8 @@ from core.model_catalog import (
     DEFAULT_LLM_MODEL,
     DEFAULT_LLM_PROVIDER,
     embedding_slug_for,
+    find_embedding_model,
+    find_llm_model,
 )
 from functools import lru_cache
 
@@ -63,7 +65,14 @@ class ElasticRAGService:
             raise HTTPException(status_code=400, detail="Invalid workspace_id")
         self.workspace_id = workspace_id
         self.workspace_safe = safe
-        self.index_name = f"rag-{safe}"
+
+    @property
+    def index_name(self) -> str:
+        slug = (
+            self._load_settings_source().get("emedding_slug")
+            or embedding_slug_for(DEFAULT_EMBEDDING_PROVIDER, DEFAULT_EMBEDDING_MODEL)
+        )
+        return f"rag-{self.workspace_safe}-{slug}"
 
     def _settings_id(self) -> str:
         return self.workspace_safe
