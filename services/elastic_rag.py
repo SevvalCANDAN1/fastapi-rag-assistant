@@ -17,6 +17,8 @@ from core.model_catalog import (
     find_embedding_model,
     find_llm_model,
 )
+from services.embedding_factory import get_embeddings
+from services.llm_factory import get_chat_model
 from functools import lru_cache
 
 DEFAULT_SYSTEM_PROMPT = """You are a RAG assistant. Answer using ONLY the text inside <context>.
@@ -54,10 +56,16 @@ def get_es_client() -> Elasticsearch:
 
 
 class ElasticRAGService:
-    def __init__(self, workspace_id: str, gemini_api_key: str | None = None):
+    def __init__(
+            self, 
+            workspace_id: str, 
+            llm_api_key: str | None = None,
+            embedding_api_key: str | None = None,
+            ):
         self.es_client = get_es_client()
 
-        self.api_key = gemini_api_key
+        self.api_key = llm_api_key
+        self.embedding_api_key = embedding_api_key
         self._embeddings = None
 
         safe = "".join(c for c in workspace_id.lower() if c.isalnum() or c in "-_")
@@ -170,15 +178,14 @@ class ElasticRAGService:
         return self.get_models()
     @property
     def embeddings(self):
-        if not self.api_key:
-            raise HTTPException(
-                status_code=401,
-                detail="Gemini API key required. Send header X-Gemini-Api-Key.",
-            )
+        settings = self._workspace_document(self._load_settings_source())
+        if not self.embedding_api_key:
+            raise HTTPException(401, "Embedding API key required. Send X-Embedding-Api-Key.")
         if self._embeddings is None:
-            self._embeddings = GoogleGenerativeAIEmbeddings(
-                model="models/gemini-embedding-001",
-                google_api_key=self.api_key,
+            self._embeddings = get_embeddings(
+                provider=settings["embedding_provider"],
+                model=settings["embedding_model"],
+                api_key=self.embedding_api_key,
             )
         return self._embeddings
 
@@ -223,10 +230,10 @@ class ElasticRAGService:
         
         retriever = vector_store.as_retriever(search_kwargs={"k": 3})
         
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            google_api_key=self.api_key,
-            temperature=0.3
+        llm = get_chat_model(
+            provider=settings["llm_provider"],
+            model=settings["llm_model"],
+            api_key=self.llm_api_key,
         )
         
         def format_docs(docs):

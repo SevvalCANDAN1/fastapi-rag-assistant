@@ -9,7 +9,7 @@ def get_chat_model(provider: str, model: str, api_key:str) -> object:
     p = provider.strip().lower()
     if p == "google":
         return ChatGoogleGenerativeAI(
-            model=model",
+            model=model,
             google_api_key=api_key,
             temperature= 0.3,
         )
