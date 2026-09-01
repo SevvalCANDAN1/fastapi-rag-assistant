@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Header, HTTPException, UploadFile, File
-from models.schemas import QueryRequest, QueryResponse, SystemPromptBody, SystemPromptResponse
+from models.schemas import QueryRequest, QueryResponse, SystemPromptBody, SystemPromptResponse, WorkspaceModelsBody, WorkspaceModelsResponse
 from services.elastic_rag import ElasticRAGService
 from services.loader import load_and_split_pdf
 from core.config import settings
@@ -126,4 +126,18 @@ def put_prompt_endpoint(
     rag_service = ElasticRAGService(workspace_id=resolve_workspace_id(x_workspace_id))
     prompt, is_default = rag_service.set_system_prompt(body.system_prompt)
     return SystemPromptResponse(system_prompt=prompt, is_default=is_default)
- 
+
+@router.get("/workspace/models", response_model=WorkspaceModelsResponse)
+def get_models_endpoint(
+    x_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
+):
+    rag_service = ElasticRAGService(workspace_id=resolve_workspace_id(x_workspace_id))
+    return rag_service.get_models()
+
+@router.put("/workspace/models", response_model=WorkspaceModelsResponse)
+def put_models_endpoint(
+    body: WorkspaceModelsBody,
+    x_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
+):
+    rag_service = ElasticRAGService(workspace_id=resolve_workspace_id(x_workspace_id=))
+    return rag_service.set_models(body)
