@@ -69,7 +69,7 @@ class ElasticRAGService:
     @property
     def index_name(self) -> str:
         slug = (
-            self._load_settings_source().get("emedding_slug")
+            self._load_settings_source().get("embedding_slug")
             or embedding_slug_for(DEFAULT_EMBEDDING_PROVIDER, DEFAULT_EMBEDDING_MODEL)
         )
         return f"rag-{self.workspace_safe}-{slug}"
@@ -132,7 +132,7 @@ class ElasticRAGService:
     def _any_index_exists(self) -> bool:
         try:
             return bool(
-                self.es_client.indices.exists(index=f"rag-{self.workspace_safe}")
+                self.es_client.indices.exists(index=f"rag-{self.workspace_safe}-*")
             )
         except Exception:
             return False
@@ -143,11 +143,6 @@ class ElasticRAGService:
         except Exception:
             return False
 
-    def _current_index_exists(self) -> bool:
-        try:
-            return bool(self.es_client.indices.exists(index=self.index_name))
-        except Exception:
-            return False
     def get_models(self) -> dict:
         settings = self._workspace_document(self._load_settings_source())
         return {
