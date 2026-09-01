@@ -157,7 +157,7 @@ class ElasticRAGService:
             "embedding_model": settings["embedding_model"],
             "embedding_slug": settings["embedding_slug"],
             "indexed": self._any_index_exists(),
-            "needs_reindexed": not self._current_indexed_exists(),
+            "needs_reindex": not self._current_index_exists(),
         }
     def set_models(self, body) -> dict:
         if find_llm_model(body.llm_provider, body.llm_model) is None:
