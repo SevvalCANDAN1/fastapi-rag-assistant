@@ -9,15 +9,13 @@ import os
 router = APIRouter(tags=["RAG"])
 
 
-def resolve_gemini_api_key(x_gemini_api_key: str | None) -> str:
-    """Prefer the per-request BYOK header; fall back to optional server env."""
-    api_key = (x_gemini_api_key or settings.GEMINI_API_KEY or "").strip()
-    if not api_key:
-        raise HTTPException(
-            status_code=401,
-            detail="Gemini API key required. Send header X-Gemini-Api-Key.",
-        )
-    return api_key
+def resolve_llm_api_key(x_llm_api_key: str | None) -> str | None:
+    """BYOK LLM key via header. Returns None if not provided (service may fall back to env)."""
+    return (x_llm_api_key or "").strip() or None
+
+def resolve_embedding_api_key(x_embedding_api_key: str | None) -> str | None:
+    """BYOK embedding key via header. Returns None if not provided."""
+    return (x_embedding_api_key or "").strip() or None
 
 def resolve_workspace_id(x_workspace_id: str | None) -> str:
     ws = (x_workspace_id or "").strip()
@@ -29,7 +27,8 @@ def resolve_workspace_id(x_workspace_id: str | None) -> str:
 @router.post("/query", response_model=QueryResponse)
 def query_rag_endpoint(
     request: QueryRequest,
-    x_gemini_api_key: str | None = Header(default=None, alias="X-Gemini-Api-Key"),
+    x_llm_api_key: str | None = Header(default=None, alias="X-Llm-Api-Key"),
+    x_embedding_api_key: str | None = Header(default=None, alias="X-Embedding-Api-Key"),
     x_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
 ):
     """
@@ -38,7 +37,8 @@ def query_rag_endpoint(
     try:
         rag_service = ElasticRAGService(
             workspace_id=resolve_workspace_id(x_workspace_id),
-            gemini_api_key=resolve_gemini_api_key(x_gemini_api_key),
+            llm_api_key=resolve_llm_api_key(x_llm_api_key),
+            embedding_api_key=resolve_embedding_api_key(x_embedding_api_key),
         )
         response = rag_service.query_rag(
             question=request.question,
@@ -59,7 +59,8 @@ def query_rag_endpoint(
 @router.post("/documents/index")
 async def index_pdf_endpoint(
     file: UploadFile = File(...),
-    x_gemini_api_key: str | None = Header(default=None, alias="X-Gemini-Api-Key"),
+    x_llm_api_key: str | None = Header(default=None, alias="X-Llm-Api-Key"),
+    x_embedding_api_key: str | None = Header(default=None, alias="X-Embedding-Api-Key"),
     x_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
 ):
     """
@@ -73,7 +74,8 @@ async def index_pdf_endpoint(
         raise HTTPException(400, "Max file size is 10MB.")
 
     workspace_id = resolve_workspace_id(x_workspace_id)
-    api_key = resolve_gemini_api_key(x_gemini_api_key)
+    llm_key = resolve_llm_api_key(x_llm_api_key)
+    embedding_key = resolve_embedding_api_key(x_embedding_api_key)
 
     tmp_path = None
 
@@ -91,7 +93,8 @@ async def index_pdf_endpoint(
         )
         rag_service = ElasticRAGService(
             workspace_id=workspace_id,
-            gemini_api_key=api_key,
+            llm_api_key=llm_key,
+            embedding_api_key=embedding_key,
         )
         rag_service.index_documents(chunks)
         return {
@@ -102,7 +105,7 @@ async def index_pdf_endpoint(
         }
     except HTTPException:
         raise
-    except Exception:
+    except Exception as e:
         raise HTTPException(500, "Indexing failed")
     finally:
         if tmp_path and os.path.exists(tmp_path):
