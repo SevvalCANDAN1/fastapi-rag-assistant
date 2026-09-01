@@ -64,7 +64,7 @@ class ElasticRAGService:
             ):
         self.es_client = get_es_client()
 
-        self.api_key = llm_api_key
+        self.llm_api_key = llm_api_key
         self.embedding_api_key = embedding_api_key
         self._embeddings = None
 
@@ -222,6 +222,7 @@ class ElasticRAGService:
         """
         Queries the RAG pipeline using Elasticsearch retrieval and Gemini LLM via pure LCEL.
         """
+        settings = self._workspace_document(self._load_settings_source())
         vector_store = ElasticsearchStore(
             es_connection=self.es_client,
             index_name=self.index_name,
