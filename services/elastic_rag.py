@@ -148,7 +148,31 @@ class ElasticRAGService:
             return bool(self.es_client.indices.exists(index=self.index_name))
         except Exception:
             return False
-
+    def get_models(self) -> dict:
+        settings = self._workspace_document(self._load_settings_source())
+        return {
+            "llm_provider": settings["llm_provider"],
+            "llm_model": settings["llm_model"],
+            "embedding_provider": settings["embedding_provider"],
+            "embedding_model": settings["embedding_model"],
+            "embedding_slug": settings["embedding_slug"],
+            "indexed": self._any_index_exists(),
+            "needs_reindexed": not self._current_indexed_exists(),
+        }
+    def set_models(self, body) -> dict:
+        if find_llm_model(body.llm_provider, body.llm_model) is None:
+            raise HTTPException(400, f"Unknown LLM: {body.llm_provider}/{body.llm_model}")
+        if find_embedding_model(body.embedding_provider, body.embedding_model) is None:
+            raise HTTPException(400, f"Unknown embedding: {body.embedding_provider}/{body.embedding_model}")
+        document = self._workspace_document(
+            self._load_settings_source(),
+            llm_provider=body.llm_provider,
+            llm_model=body.llm_model,
+            embedding_provider=body.embedding_provider,
+            embedding_model=body.embedding_model,
+        )
+        self.save_workspace_settings(document)
+        return self.get_models()
     @property
     def embeddings(self):
         if not self.api_key:
