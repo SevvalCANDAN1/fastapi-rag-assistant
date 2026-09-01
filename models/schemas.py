@@ -74,3 +74,19 @@ class EmbeddingModelsResponse(BaseModel):
     llm_provider: str
     llm_model: str
     models: list[EmbeddingModelOption]
+
+
+class WorkspaceModelsBody(BaseModel):
+    llm_provider: str = Field(..., description="LLM provider id, e.g. google/openai/anthropic/groq")
+    llm_model: str = Field(..., description="LLM model id from the catalog")
+    embedding_provider: str = Field(..., description="Embedding model id from the catalog")
+    embedding_model: str = Field(..., description="Embedding model id from the catalog")
+
+class WorkspaceModelsResponse(BaseModel):
+    llm_provider: str
+    llm_model: str
+    embedding_provider: str
+    embedding_model: str
+    embedding_slug: str
+    indexed: bool = Field(..., description="True if any index exists for this workspace")
+    needs_reindex: bool = Field(..., description="True if current embedding has no indexed docs yet")
