@@ -11,3 +11,5 @@ pypdf
 langchain-core
 langchain-openai
 langchain-voyageai
+langchain-anthropic
+langchain-groq
