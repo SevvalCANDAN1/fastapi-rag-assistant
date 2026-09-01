@@ -129,6 +129,26 @@ class ElasticRAGService:
         )
         return document
 
+    def _any_index_exists(self) -> bool:
+        try:
+            return bool(
+                self.es_client.indices.exists(index=f"rag-{self.workspace_safe}")
+            )
+        except Exception:
+            return False
+
+    def _current_index_exists(self) -> bool:
+        try:
+            return bool(self.es_client.indices.exists(index=self.index_name))
+        except Exception:
+            return False
+
+    def _current_index_exists(self) -> bool:
+        try:
+            return bool(self.es_client.indices.exists(index=self.index_name))
+        except Exception:
+            return False
+
     @property
     def embeddings(self):
         if not self.api_key:
