@@ -139,5 +139,5 @@ def put_models_endpoint(
     body: WorkspaceModelsBody,
     x_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
 ):
-    rag_service = ElasticRAGService(workspace_id=resolve_workspace_id(x_workspace_id=))
+    rag_service = ElasticRAGService(workspace_id=resolve_workspace_id(x_workspace_id))
     return rag_service.set_models(body)
