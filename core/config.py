@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     ELASTICSEARCH_URL: str
     ELASTICSEARCH_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    VOYAGE_API_KEY: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
     JWT_SECRET: Optional[str] = None
     ALLOWED_ORIGINS: str = "http://localhost:3000"
 
