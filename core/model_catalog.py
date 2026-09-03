@@ -103,7 +103,7 @@ def find_llm_model(
         model: str,
 ) -> LLMModel | None:
     provider = provider.strip().lower()
-    model.strip()
+    model = model.strip()
 
     return next(
         (

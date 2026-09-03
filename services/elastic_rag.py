@@ -2,7 +2,6 @@ import os
 import base64
 from elasticsearch import Elasticsearch
 from langchain_community.vectorstores import ElasticsearchStore
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
@@ -67,6 +66,7 @@ class ElasticRAGService:
         self.llm_api_key = llm_api_key
         self.embedding_api_key = embedding_api_key
         self._embeddings = None
+        self._settings_cache: dict | None = None
 
         safe = "".join(c for c in workspace_id.lower() if c.isalnum() or c in "-_")
         if not safe:
@@ -76,10 +76,8 @@ class ElasticRAGService:
 
     @property
     def index_name(self) -> str:
-        slug = (
-            self._load_settings_source().get("embedding_slug")
-            or embedding_slug_for(DEFAULT_EMBEDDING_PROVIDER, DEFAULT_EMBEDDING_MODEL)
-        )
+        slug = self._get_settings().get("embedding_slug") or embedding_slug_for(
+            DEFAULT_EMBEDDING_PROVIDER, DEFAULT_EMBEDDING_MODEL)
         return f"rag-{self.workspace_safe}-{slug}"
 
     def _settings_id(self) -> str:
@@ -91,6 +89,12 @@ class ElasticRAGService:
             return dict(res["_source"] or {})
         except Exception:
             return {}
+    
+    def _get_settings(self) -> dict:
+        """Cached, normalized workspace settings for this request."""
+        if self._settings_cache is None:
+            self._settings_cache = self._workspace_document(self._load_settings_source())
+        return self._settings_cache
 
     def _workspace_document(
         self,
@@ -152,7 +156,7 @@ class ElasticRAGService:
             return False
 
     def get_models(self) -> dict:
-        settings = self._workspace_document(self._load_settings_source())
+        settings = self._get_settings()
         return {
             "llm_provider": settings["llm_provider"],
             "llm_model": settings["llm_model"],
@@ -175,10 +179,11 @@ class ElasticRAGService:
             embedding_model=body.embedding_model,
         )
         self.save_workspace_settings(document)
+        self._settings_cache = None
         return self.get_models()
     @property
     def embeddings(self):
-        settings = self._workspace_document(self._load_settings_source())
+        settings = self._get_settings()
         if not self.embedding_api_key:
             raise HTTPException(401, "Embedding API key required. Send X-Embedding-Api-Key.")
         if self._embeddings is None:
@@ -190,7 +195,7 @@ class ElasticRAGService:
         return self._embeddings
 
     def get_system_prompt(self) -> tuple[str, bool]:
-        saved = (self._load_settings_source().get("system_prompt") or "").strip()
+        saved = (self._get_settings().get("system_prompt") or "").strip()
         if saved:
             return saved, False
         return DEFAULT_SYSTEM_PROMPT, True
@@ -202,6 +207,7 @@ class ElasticRAGService:
             system_prompt=text,
         )
         self.save_workspace_settings(document)
+        self._settings_cache = None 
         if not text:
             return DEFAULT_SYSTEM_PROMPT, True
         return text, False
@@ -222,7 +228,14 @@ class ElasticRAGService:
         """
         Queries the RAG pipeline using Elasticsearch retrieval and Gemini LLM via pure LCEL.
         """
-        settings = self._workspace_document(self._load_settings_source())
+        if not self.llm_api_key:
+            raise HTTPException(401, "LLM API key required. Send X-Llm-Api-Key.")
+        if not self._current_index_exists():                          
+            raise HTTPException(
+                400,
+                "No documents indexed for this workspace with the current embedding. Upload a PDF first.",
+            )
+        settings = self._get_settings()
         vector_store = ElasticsearchStore(
             es_connection=self.es_client,
             index_name=self.index_name,

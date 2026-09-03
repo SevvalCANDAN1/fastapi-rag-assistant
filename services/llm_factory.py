@@ -26,9 +26,9 @@ def get_chat_model(provider: str, model: str, api_key:str) -> object:
             temperature=0.3,
         )
     if p == "groq":
-            return ChatGroq(
-                model=model,
-                api_key=api_key,
-                temperature=0.3,
-            )
-    raise HTTPException(400, f"Unsupported embedding provider: {provider}")
+        return ChatGroq(
+            model=model,
+            api_key=api_key,
+            temperature=0.3,
+        )
+    raise HTTPException(400, f"Unsupported LLM provider: {provider}")
