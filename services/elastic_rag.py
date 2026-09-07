@@ -1,10 +1,9 @@
 import os
+import time
 import base64
 from elasticsearch import Elasticsearch
 from langchain_community.vectorstores import ElasticsearchStore
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
 from fastapi import HTTPException
 from core.config import settings
 from core.model_catalog import (
@@ -19,6 +18,9 @@ from core.model_catalog import (
 from services.embedding_factory import get_embeddings
 from services.llm_factory import get_chat_model
 from functools import lru_cache
+
+from langchain_core.messages import ToolMessage
+from tools.registry import ALL_TOOLS
 
 DEFAULT_SYSTEM_PROMPT = """You are a RAG assistant. Answer using ONLY the text inside <context>.
 If the context is empty or does not contain the answer, say that this information is not in the uploaded documents. Do not invent facts.
@@ -228,6 +230,7 @@ class ElasticRAGService:
         """
         Queries the RAG pipeline using Elasticsearch retrieval and Gemini LLM via pure LCEL.
         """
+        total_start = time.perf_counter()
         if not self.llm_api_key:
             raise HTTPException(401, "LLM API key required. Send X-Llm-Api-Key.")
         if not self._current_index_exists():                          
@@ -274,21 +277,56 @@ class ElasticRAGService:
         Question: {question}
         """)
         
+        t0 = time.perf_counter()
         retrieved_docs = retriever.invoke(question)
         context_text = format_docs(retrieved_docs)
-        
-        chain = (
-            {
-                "system_instructions": lambda _: instructions,
-                "context": lambda _: context_text,
-                "question": RunnablePassthrough(),
-            }
-            | prompt
-            | llm
-            | StrOutputParser()
+        t1 = time.perf_counter()
+        print(f"[TIMING] retrieval: {t1 - t0:.3f}s")
+
+        llm_with_tools = llm.bind_tools(ALL_TOOLS)
+        messages = prompt.format_messages(
+            system_instructions=instructions,
+            context=context_text,
+            question=question,
         )
+
+        t2 = time.perf_counter()
+        ai_msg = llm_with_tools.invoke(messages)
+        t3 = time.perf_counter()
+        print(f"[TIMING] first llm call: {t3 - t2:.3f}s")
+
+        if getattr(ai_msg, "tool_calls", None):
+            t4 = time.perf_counter()
+            tool_map = {t.name: t for t in ALL_TOOLS}
+            messages.append(ai_msg)
+            for tc in ai_msg.tool_calls:
+                tool_name = tc.get("name")
+                tool_args = tc.get("args")
+                print(f"[TOOL CALL] {tool_name}({tool_args})")
+                tool = tool_map.get(tool_name)
+                if tool:
+                    result = tool.invoke(tool_args)
+                    print(f"[TOOL RESULT] {tool_name} -> {result}")
+                    messages.append(
+                        ToolMessage(content=str(result), tool_call_id=tc["id"])
+                    )
+            t5 = time.perf_counter()
+            print(f"[TIMING] tool execution: {t5 - t4:.3f}s")
+            t6 = time.perf_counter()
+            ai_msg = llm_with_tools.invoke(messages)
+            t7 = time.perf_counter()
+            print(f"[TIMING] second llm call: {t7 - t6:.3f}s")
         
-        answer = chain.invoke(question)
+        answer = ai_msg.content if hasattr(ai_msg, "content") else str(ai_msg)
+        if isinstance(answer, list):
+            # Gemini returns content as a list of parts (e.g. [{'type':'text','text':'...'}])
+            answer = "".join(
+                part.get("text", "") if isinstance(part, dict) else str(part)
+                for part in answer
+            )
+        if not isinstance(answer, str):
+            answer = str(answer)
+
 
         sources = []
         for doc in retrieved_docs:
@@ -299,6 +337,8 @@ class ElasticRAGService:
                 "page": meta.get("page"),
             })
         
+        total_end = time.perf_counter()
+        print(f"[TIMING] total: {total_end - total_start:.3f}s")
         return {
             "result": answer,
             "source_documents": sources

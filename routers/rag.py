@@ -52,8 +52,10 @@ def query_rag_endpoint(
 
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(status_code=500, detail="Query failed")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Query failed: {e}")
 
 
 @router.post("/documents/index")
