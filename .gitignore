@@ -5,8 +5,18 @@ __pycache__/
 
 # Virtual environments / Sanal ortamlar
 venv/
+.venv/
 env/
 .env
+.env.*
+!.env.example
+
+# Local data and logs / Yerel veri ve loglar
+data/*
+!data/.gitkeep
+uploads/
+*.log
+logs/
 
 # IDE specific files / IDE dosyaları
 .vscode/
