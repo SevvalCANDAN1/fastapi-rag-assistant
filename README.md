@@ -2,8 +2,7 @@
 
 Production-oriented RAG API: PDF upload, Elasticsearch vector search, Gemini answers (BYOK via header).
 
-**Live:** https://fastapi-rag-assistant.onrender.com  
-**Docs:** https://fastapi-rag-assistant.onrender.com/docs
+Deploy the API yourself (for example Render) and set the frontend `VITE_API_URL` to that origin. Do not commit live hostnames.
 
 ## Stack
 
@@ -30,7 +29,7 @@ Production-oriented RAG API: PDF upload, Elasticsearch vector search, Gemini ans
 
 ```bash
 # Health
-curl https://fastapi-rag-assistant.onrender.com/rag/v1/health
+curl http://localhost:8000/rag/v1/health
 
 # Index PDF
 curl -X POST .../rag/v1/documents/index \
